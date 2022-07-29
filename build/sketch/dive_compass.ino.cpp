@@ -35,6 +35,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 #include <Adafruit_ADXL345_U.h>
+#include <Arduino_GFX_Library.h>
 
 #define CALIBRATE 0
 /* Assign a unique ID to this sensor at the same time */
@@ -62,23 +63,71 @@ const float offsetZ = (134.18 + 108.47)/2;
 //Vic@20220727 We are -4* 55', around 0.0858 raduans
 const float declinationAngle = (-4.0 - (55.0 / 60.0)) / (180 / M_PI); 
 
-#line 63 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+//設定接線PIN腳，主要分為ESP32和ESP8266
+/*
+ * RST：33
+ * DC：27
+ * SDA(MOSI)：23
+ * BLK：22
+ * SCL(SCK)：18
+ * CS：5
+ * GND：GND
+ * VCC：3.3V
+ */
+
+
+#if defined(ESP32)
+#define TFT_CS 5
+// #define TFT_CS -1 // for display without CS pin
+// #define TFT_DC 16
+#define TFT_DC 27
+// #define TFT_DC -1 // for display without DC pin (9-bit SPI)
+// #define TFT_RST 17
+#define TFT_RST 33
+#define TFT_BL 22
+#elif defined(ESP8266)
+#define TFT_CS 15
+#define TFT_DC 5
+#define TFT_RST -1
+// #define TFT_BL 4
+#else
+#define TFT_CS 9
+#define TFT_DC 8
+#define TFT_RST 7
+#define TFT_BL 6
+#endif
+
+// 使用軟體SPI用這行
+// Arduino_DataBus *bus = new Arduino_SWSPI(TFT_DC, TFT_CS, 18 /* SCK */, 23 /* MOSI */, -1 /* MISO */);
+
+// 通用的硬體 SPI 寫法
+Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
+
+// 如果要更自訂ESP32的接腳，用這行去改
+ //Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, 18 /* SCK */, 23 /* MOSI */, -1 /* MISO */, VSPI /* spi_num */);
+
+// 使用GC9A01 IPS LCD 240x240
+Arduino_GC9A01 *gfx = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
+
+#line 110 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void displaySensorDetails(void);
-#line 93 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 140 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void displayRange(void);
-#line 118 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 165 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void displayDataRate(void);
-#line 179 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 226 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+void draw(int x, int y, String msg);
+#line 232 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void setup(void);
-#line 212 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 271 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void calibrate(float x, float y, float z);
-#line 228 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 287 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 float noTiltCompensate(sensors_event_t event);
-#line 233 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 292 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 float tiltCompensate(sensors_event_t mag, sensors_event_t normAccel);
-#line 249 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 308 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void loop(void);
-#line 63 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
+#line 110 "g:\\我的雲端硬碟\\Vic's Projects\\Arduino\\Code\\dive_compass\\dive_compass.ino"
 void displaySensorDetails(void)
 {
   sensor_t sensor;
@@ -195,11 +244,23 @@ void displayDataRate(void)
   Serial.println(" Hz");  
 }
 
+void draw(int x, int y, String msg){
+  gfx->setCursor(x, y);
+  gfx->setTextColor(WHITE);
+  gfx->print(msg);
+}
+
 void setup(void) 
 {
   Serial.begin(9600);
   Serial.println("Dive Compass Test"); Serial.println("");
   
+  gfx->begin();             //初始化LCD
+  gfx->fillScreen(BLACK);   //用黑色清除螢幕  
+  gfx->setTextSize(2);
+
+  draw(10, 10, "Starting...");
+
   /* Initialise the sensor */
   if(!mag.begin())
   {
@@ -277,11 +338,14 @@ void loop(void)
   Serial.print("X: "); Serial.print(eventMag.magnetic.x); Serial.print("  ");
   Serial.print("Y: "); Serial.print(eventMag.magnetic.y); Serial.print("  ");
   Serial.print("Z: "); Serial.print(eventMag.magnetic.z); Serial.print("  ");Serial.println("uT");
+  String data = "X:"+String(eventMag.magnetic.x, 2)+", Y:"+String(eventMag.magnetic.y, 2)+", Z:"+String(eventMag.magnetic.z, 2);
+  draw(10, 30, data);
   /* Display the results (acceleration is measured in m/s^2) */
   Serial.print("X: "); Serial.print(eventAccl.acceleration.x); Serial.print("  ");
   Serial.print("Y: "); Serial.print(eventAccl.acceleration.y); Serial.print("  ");
   Serial.print("Z: "); Serial.print(eventAccl.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
-
+  data = "accX:"+String(eventAccl.acceleration.x, 2)+", accY:"+String(eventAccl.acceleration.y, 2)+", Z:"+String(eventAccl.acceleration.z, 2);
+  draw(10, 50, data);
   if(CALIBRATE){
     tiltCompensate(eventMag, eventAccl);
     //calibrate(eventMag.magnetic.x, eventMag.magnetic.y, eventMag.magnetic.z);
@@ -324,7 +388,7 @@ void loop(void)
   float headingDegrees = heading * 180/M_PI; 
   
   Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
-  
+  draw(10, 200, String(headingDegrees));
   }
   
   delay(100);
