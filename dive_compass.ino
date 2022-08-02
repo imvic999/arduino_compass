@@ -73,6 +73,7 @@ const float declinationAngle = (-4.0 - (55.0 / 60.0)) / (180 / M_PI);
  * VCC：3.3V
  */
 
+#define GFX_BL 16
 
 #if defined(ESP32)
 #define TFT_CS 5
@@ -236,9 +237,15 @@ void setup(void)
   
   gfx->begin();             //初始化LCD
   gfx->fillScreen(BLACK);   //用黑色清除螢幕  
-  gfx->setTextSize(2);
+  
+  #ifdef GFX_BL
+    pinMode(GFX_BL, OUTPUT);
+    digitalWrite(GFX_BL, HIGH);
+  #endif
 
-  draw(10, 10, "Starting...");
+  gfx->setTextSize(1);
+
+  //draw(30, 60, "Starting...");
 
   /* Initialise the sensor */
   if(!mag.begin())
@@ -307,6 +314,10 @@ float tiltCompensate(sensors_event_t mag, sensors_event_t normAccel){
 
 void loop(void) 
 {
+  //Clear screen
+  //gfx->fillScreen(BLACK);
+  gfx->fillRect(30, 60, 240-30, 240-60, BLACK);
+
   /* Get a new sensor event */ 
   sensors_event_t eventMag; 
   sensors_event_t eventAccl; 
@@ -317,14 +328,25 @@ void loop(void)
   Serial.print("X: "); Serial.print(eventMag.magnetic.x); Serial.print("  ");
   Serial.print("Y: "); Serial.print(eventMag.magnetic.y); Serial.print("  ");
   Serial.print("Z: "); Serial.print(eventMag.magnetic.z); Serial.print("  ");Serial.println("uT");
-  String data = "X:"+String(eventMag.magnetic.x, 2)+", Y:"+String(eventMag.magnetic.y, 2)+", Z:"+String(eventMag.magnetic.z, 2);
-  draw(10, 30, data);
+  //String data = "X:"+String(eventMag.magnetic.x, 2)+", Y:"+String(eventMag.magnetic.y, 2)+", Z:"+String(eventMag.magnetic.z, 2);
+  draw(30, 60, "X:"+String(eventMag.magnetic.x, 2));
+  draw(30, 80, "Y:"+String(eventMag.magnetic.y, 2));
+  draw(30, 100, "Z:"+String(eventMag.magnetic.z, 2));
   /* Display the results (acceleration is measured in m/s^2) */
   Serial.print("X: "); Serial.print(eventAccl.acceleration.x); Serial.print("  ");
   Serial.print("Y: "); Serial.print(eventAccl.acceleration.y); Serial.print("  ");
   Serial.print("Z: "); Serial.print(eventAccl.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
-  data = "accX:"+String(eventAccl.acceleration.x, 2)+", accY:"+String(eventAccl.acceleration.y, 2)+", Z:"+String(eventAccl.acceleration.z, 2);
-  draw(10, 50, data);
+  //data = "aX:"+String(eventAccl.acceleration.x, 2)+", accY:"+String(eventAccl.acceleration.y, 2)+", Z:"+String(eventAccl.acceleration.z, 2);
+  draw(130, 60, "aX:"+String(eventAccl.acceleration.x, 2));
+  draw(130, 80, "aY:"+String(eventAccl.acceleration.y, 2));
+  draw(130, 100, "aZ:"+String(eventAccl.acceleration.z, 2));
+  //gfx->setCursor(30, 60);
+  //gfx->print("X:"+String(eventMag.magnetic.x, 2));
+  //gfx->println(" aX:"+String(eventAccl.acceleration.x, 2));
+  //gfx->print("Y:"+String(eventMag.magnetic.y, 2));
+  //gfx->println(" aY:"+String(eventAccl.acceleration.y, 2));
+  //gfx->print("Z:"+String(eventMag.magnetic.z, 2));
+  //gfx->println(" aZ:"+String(eventAccl.acceleration.z, 2));
   if(CALIBRATE){
     tiltCompensate(eventMag, eventAccl);
     //calibrate(eventMag.magnetic.x, eventMag.magnetic.y, eventMag.magnetic.z);
@@ -367,7 +389,9 @@ void loop(void)
   float headingDegrees = heading * 180/M_PI; 
   
   Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
-  draw(10, 200, String(headingDegrees));
+  draw(30, 140, String(headingDegrees));
+  //gfx->setCursor(30, 140);
+  //gfx->println(String(headingDegrees));
   }
   
   delay(100);
