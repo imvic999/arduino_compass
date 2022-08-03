@@ -36,30 +36,33 @@
 #include <Arduino_GFX_Library.h>
 
 #define CALIBRATE 0
+#define ENABLE_ACCEL 1
 /* Assign a unique ID to this sensor at the same time */
 Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
+#if ENABLE_ACCEL
 Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+#endif
 
 #ifdef CALIBRATE
-float maxX = -9999;
-float maxY = -9999;
-float maxZ = -9999;
-float minX = 9999;
-float minY = 9999;
-float minZ = 9999;
+float maxX = -999;
+float maxY = -999;
+float maxZ = -999;
+float minX = 999;
+float minY = 999;
+float minZ = 999;
 #endif 
 
 //X: -37.82,-77.00  Y: -7.64,-47.82  Z: 102.35,37.04
 //Vic@20220729 Add accel sensor X: 45.07,-144.62  Y: 59.09,-119.49  Z: 134.18,108.47
-const float offsetX = (45.07 + -144.62)/2;
-const float offsetY = (59.09 + -119.49)/2;
-const float offsetZ = (134.18 + 108.47)/2;
+const float offsetX = (-70.91 + -12.45)/2;
+const float offsetY = (-68.82 + -8.73)/2;
+const float offsetZ = (-13.67 + 61.02)/2;
 // Once you have your heading, you must then add your 'Declination Angle', which is the 'Error' of the magnetic field in your location.
 // Find yours here: http://www.magnetic-declination.com/
 // Mine is: -13* 2' W, which is ~13 Degrees, or (which we need) 0.22 radians
 // If you cannot find your Declination, comment out these two lines, your compass will be slightly off.
-//Vic@20220727 We are -4* 55', around 0.0858 raduans
-const float declinationAngle = (-4.0 - (55.0 / 60.0)) / (180 / M_PI); 
+//Vic@20220727 We are -4* 4', around 0.0858 raduans
+const float declinationAngle = (-4.0 - (4.0 / 60.0)) / (180 / M_PI); 
 
 //設定接線PIN腳，主要分為ESP32和ESP8266
 /*
@@ -103,7 +106,7 @@ const float declinationAngle = (-4.0 - (55.0 / 60.0)) / (180 / M_PI);
 Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
 
 // 如果要更自訂ESP32的接腳，用這行去改
- //Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, 18 /* SCK */, 23 /* MOSI */, -1 /* MISO */, VSPI /* spi_num */);
+//Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, 18 /* SCK */, 23 /* MOSI */, -1 /* MISO */, VSPI /* spi_num */);
 
 // 使用GC9A01 IPS LCD 240x240
 Arduino_GC9A01 *gfx = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
@@ -124,7 +127,7 @@ void displaySensorDetails(void)
   Serial.print  ("offsetZ:      "); Serial.print(offsetZ); Serial.println(" uT");  
   Serial.println("------------------------------------");
   Serial.println("");
-  
+#if ENABLE_ACCEL  
   accel.getSensor(&sensor);
   Serial.println("------------------------------------");
   Serial.print  ("Sensor:       "); Serial.println(sensor.name);
@@ -135,9 +138,11 @@ void displaySensorDetails(void)
   Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" m/s^2");  
   Serial.println("------------------------------------");
   Serial.println("");
+#endif  
   delay(500);
 }
 
+#if ENABLE_ACCEL
 void displayRange(void)
 {
   Serial.print  ("Range:         +/- "); 
@@ -223,6 +228,7 @@ void displayDataRate(void)
   }  
   Serial.println(" Hz");  
 }
+#endif
 
 void draw(int x, int y, String msg){
   gfx->setCursor(x, y);
@@ -230,52 +236,7 @@ void draw(int x, int y, String msg){
   gfx->print(msg);
 }
 
-void setup(void) 
-{
-  Serial.begin(9600);
-  Serial.println("Dive Compass Test"); Serial.println("");
-  
-  gfx->begin();             //初始化LCD
-  gfx->fillScreen(BLACK);   //用黑色清除螢幕  
-  
-  #ifdef GFX_BL
-    pinMode(GFX_BL, OUTPUT);
-    digitalWrite(GFX_BL, HIGH);
-  #endif
-
-  gfx->setTextSize(1);
-
-  //draw(30, 60, "Starting...");
-
-  /* Initialise the sensor */
-  if(!mag.begin())
-  {
-    /* There was a problem detecting the HMC5883 ... check your connections */
-    Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
-    while(1);
-  }
-
-    /* Initialise the sensor */
-  if(!accel.begin())
-  {
-    /* There was a problem detecting the ADXL345 ... check your connections */
-    Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
-    while(1);
-  }
-
-  /* Set the range to whatever is appropriate for your project */
-  accel.setRange(ADXL345_RANGE_2_G);
-  
-  /* Display some basic information on this sensor */
-  displaySensorDetails();
-
-  /* Display additional settings (outside the scope of sensor_t) */
-  displayDataRate();
-  displayRange();
-  Serial.println("");  
-}
-
-void calibrate(float x, float y, float z){
+void checkMinMax(float x, float y, float z){
     if(maxX < x)
         maxX = x;
     if(minX > x)
@@ -296,85 +257,135 @@ float noTiltCompensate(sensors_event_t event){
 }
 
 // 傾斜補償
-float tiltCompensate(sensors_event_t mag, sensors_event_t normAccel){
+#if ENABLE_ACCEL
+bool tiltCompensate(sensors_event_t mag, sensors_event_t normAccel){
   float roll;
   float pitch;
   roll = asin(normAccel.acceleration.y);
   pitch = asin(-normAccel.acceleration.x);
-  if (roll > 0.78 || roll < -0.78 || pitch > 0.78 || pitch < -0.78){return -1000; }
+  if (roll > 0.78 || roll < -0.78 || pitch > 0.78 || pitch < -0.78){return false; }
   float cosRoll = cos(roll);
   float sinRoll = sin(roll);  
   float cosPitch = cos(pitch);
   float sinPitch = sin(pitch);
-  float Xh = mag.magnetic.x * cosPitch + mag.magnetic.z * sinPitch;
-  float Yh = mag.magnetic.x * sinRoll * sinPitch + mag.magnetic.y * cosRoll - mag.magnetic.z * sinRoll * cosPitch;
-  calibrate(Xh, Yh, mag.magnetic.z);
-  return atan2(Yh, Xh);
+  mag.magnetic.x = mag.magnetic.x * cosPitch + mag.magnetic.z * sinPitch;
+  mag.magnetic.y = mag.magnetic.x * sinRoll * sinPitch + mag.magnetic.y * cosRoll - mag.magnetic.z * sinRoll * cosPitch;
+  return true;
+}
+#endif
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+void setup(void) 
+{
+  Serial.begin(9600);
+  Serial.println("Dive Compass Test"); Serial.println("");
+  
+  gfx->begin();             //初始化LCD
+  gfx->fillScreen(BLACK);   //用黑色清除螢幕  
+  
+  #ifdef GFX_BL
+    pinMode(GFX_BL, OUTPUT);
+    digitalWrite(GFX_BL, HIGH);
+  #endif
+
+  gfx->setTextSize(2);
+
+  /* Initialise the sensor */
+  if(!mag.begin())
+  {
+    /* There was a problem detecting the HMC5883 ... check your connections */
+    Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
+    while(1);
+  }
+
+    /* Initialise the sensor */
+#if ENABLE_ACCEL
+  if(!accel.begin())
+  {
+    /* There was a problem detecting the ADXL345 ... check your connections */
+    Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
+    while(1);
+  }
+
+  /* Set the range to whatever is appropriate for your project */
+  accel.setRange(ADXL345_RANGE_2_G);
+#endif  
+  /* Display some basic information on this sensor */
+  displaySensorDetails();
+
+#if ENABLE_ACCEL
+  /* Display additional settings (outside the scope of sensor_t) */
+  displayDataRate();
+  displayRange();
+#endif  
+  Serial.println("");  
 }
 
 void loop(void) 
 {
-  //Clear screen
-  //gfx->fillScreen(BLACK);
-  gfx->fillRect(30, 60, 240-30, 240-60, BLACK);
-
   /* Get a new sensor event */ 
   sensors_event_t eventMag; 
-  sensors_event_t eventAccl; 
   mag.getEvent(&eventMag);
+
+#if ENABLE_ACCEL  
+  sensors_event_t eventAccl; 
   accel.getEvent(&eventAccl);
+#endif
 
   /* Display the results (magnetic vector values are in micro-Tesla (uT)) */
-  Serial.print("X: "); Serial.print(eventMag.magnetic.x); Serial.print("  ");
-  Serial.print("Y: "); Serial.print(eventMag.magnetic.y); Serial.print("  ");
-  Serial.print("Z: "); Serial.print(eventMag.magnetic.z); Serial.print("  ");Serial.println("uT");
-  //String data = "X:"+String(eventMag.magnetic.x, 2)+", Y:"+String(eventMag.magnetic.y, 2)+", Z:"+String(eventMag.magnetic.z, 2);
-  draw(30, 60, "X:"+String(eventMag.magnetic.x, 2));
-  draw(30, 80, "Y:"+String(eventMag.magnetic.y, 2));
-  draw(30, 100, "Z:"+String(eventMag.magnetic.z, 2));
-  /* Display the results (acceleration is measured in m/s^2) */
-  Serial.print("X: "); Serial.print(eventAccl.acceleration.x); Serial.print("  ");
-  Serial.print("Y: "); Serial.print(eventAccl.acceleration.y); Serial.print("  ");
-  Serial.print("Z: "); Serial.print(eventAccl.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
-  //data = "aX:"+String(eventAccl.acceleration.x, 2)+", accY:"+String(eventAccl.acceleration.y, 2)+", Z:"+String(eventAccl.acceleration.z, 2);
-  draw(130, 60, "aX:"+String(eventAccl.acceleration.x, 2));
-  draw(130, 80, "aY:"+String(eventAccl.acceleration.y, 2));
-  draw(130, 100, "aZ:"+String(eventAccl.acceleration.z, 2));
-  //gfx->setCursor(30, 60);
-  //gfx->print("X:"+String(eventMag.magnetic.x, 2));
-  //gfx->println(" aX:"+String(eventAccl.acceleration.x, 2));
-  //gfx->print("Y:"+String(eventMag.magnetic.y, 2));
-  //gfx->println(" aY:"+String(eventAccl.acceleration.y, 2));
-  //gfx->print("Z:"+String(eventMag.magnetic.z, 2));
-  //gfx->println(" aZ:"+String(eventAccl.acceleration.z, 2));
-  if(CALIBRATE){
-    tiltCompensate(eventMag, eventAccl);
-    //calibrate(eventMag.magnetic.x, eventMag.magnetic.y, eventMag.magnetic.z);
-    Serial.print("X: "); Serial.print(maxX); Serial.print(","); Serial.print(minX);Serial.print("  ");
-    Serial.print("Y: "); Serial.print(maxY); Serial.print(","); Serial.print(minY);Serial.print("  ");
-    Serial.print("Z: "); Serial.print(maxZ); Serial.print(","); Serial.println(minZ);
-  }
-  else{
-    eventMag.magnetic.x = eventMag.magnetic.x - offsetX;
-    eventMag.magnetic.y = eventMag.magnetic.y - offsetY;
-    eventMag.magnetic.z = eventMag.magnetic.z - offsetZ;
-    /* Display the results (magnetic vector values are in micro-Tesla (uT)) */
-    Serial.print("mX: "); Serial.print(eventMag.magnetic.x); Serial.print("  ");
-    Serial.print("mY: "); Serial.print(eventMag.magnetic.y); Serial.print("  ");
-    Serial.print("mZ: "); Serial.print(eventMag.magnetic.z); Serial.print("  ");Serial.println("Tu");
-  }  
-      
+  //Serial.print("X: "); Serial.print(eventMag.magnetic.x); Serial.print("  ");
+  //Serial.print("Y: "); Serial.print(eventMag.magnetic.y); Serial.print("  ");
+  //Serial.print("Z: "); Serial.print(eventMag.magnetic.z); Serial.print("  ");Serial.println("uT");
+//
+  ///* Display the results (acceleration is measured in m/s^2) */
+  //Serial.print("X: "); Serial.print(eventAccl.acceleration.x); Serial.print("  ");
+  //Serial.print("Y: "); Serial.print(eventAccl.acceleration.y); Serial.print("  ");
+  //Serial.print("Z: "); Serial.print(eventAccl.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
 
-  
-  if(!CALIBRATE){
+#if CALIBRATE
+#if ENABLE_ACCEL    
+    tiltCompensate(eventMag, eventAccl);
+    checkMinMax(eventMag.magnetic.x, eventMag.magnetic.y, eventMag.magnetic.z);
+#endif
+    //Serial.print("X: "); Serial.print(maxX); Serial.print(","); Serial.print(minX);Serial.print("  ");
+    //Serial.print("Y: "); Serial.print(maxY); Serial.print(","); Serial.print(minY);Serial.print("  ");
+    //Serial.print("Z: "); Serial.print(maxZ); Serial.print(","); Serial.println(minZ);
+
+    gfx->fillRect(10, 80,  230, 16, BLACK);
+    draw(10, 80, String(eventMag.magnetic.x, 2)+", "+String(eventMag.magnetic.y, 2)+", "+String(eventMag.magnetic.z, 2));
+    gfx->fillRect(10, 120, 230, 16, BLACK);
+    draw(10, 120, "X:"+String(minX, 2)+","+String(maxX, 2));
+    gfx->fillRect(10, 140, 230, 16, BLACK);
+    draw(10, 140, "Y:"+String(minY, 2)+","+String(maxY, 2));
+    gfx->fillRect(10, 160, 230, 16, BLACK);
+    draw(10, 160, "Z:"+String(minZ, 2)+","+String(maxZ, 2));
+#else
+    /* Display the results (magnetic vector values are in micro-Tesla (uT)) */
+    //Serial.print("mX: "); Serial.print(eventMag.magnetic.x); Serial.print("  ");
+    //Serial.print("mY: "); Serial.print(eventMag.magnetic.y); Serial.print("  ");
+    //Serial.print("mZ: "); Serial.print(eventMag.magnetic.z); Serial.print("  ");Serial.println("Tu");
 
   // Hold the module so that Z is pointing 'up' and you can measure the heading with x&y
   // Calculate heading when the magnetometer is level, then correct for signs of axis.
   //float heading = noTiltCompensate(eventMag);
-  float heading = tiltCompensate(eventMag, eventAccl);
-  if(heading == -1000){
+  float heading = -1000;
+#if ENABLE_ACCEL
+  if(tiltCompensate(eventMag, eventAccl)){
+    eventMag.magnetic.x = eventMag.magnetic.x - offsetX;
+    eventMag.magnetic.y = eventMag.magnetic.y - offsetY;
+    eventMag.magnetic.z = eventMag.magnetic.z - offsetZ;
+    heading = atan2(eventMag.magnetic.y, eventMag.magnetic.x);
+  }
+  else{
     heading = noTiltCompensate(eventMag);
   }
+#else
+  heading = noTiltCompensate(eventMag);
+#endif
   heading += declinationAngle;
   
   // Correct for when signs are reversed.
@@ -389,10 +400,26 @@ void loop(void)
   float headingDegrees = heading * 180/M_PI; 
   
   Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
-  draw(30, 140, String(headingDegrees));
-  //gfx->setCursor(30, 140);
-  //gfx->println(String(headingDegrees));
-  }
   
-  delay(100);
+  gfx->fillRect(10, 80,  108, 16, BLACK);
+  draw(10, 80,  "X:"+String(eventMag.magnetic.x, 2));
+  gfx->fillRect(10, 100, 108, 16, BLACK);
+  draw(10, 100, "Y:"+String(eventMag.magnetic.y, 2));
+  gfx->fillRect(10, 120, 108, 16, BLACK);
+  draw(10, 120, "Z:"+String(eventMag.magnetic.z, 2));
+
+#if ENABLE_ACCEL
+  gfx->fillRect(120, 80,  120, 16, BLACK);
+  draw(120, 80,  "aX:"+String(eventAccl.acceleration.x, 2));
+  gfx->fillRect(120, 100, 120, 16, BLACK);
+  draw(120, 100, "aY:"+String(eventAccl.acceleration.y, 2));
+  gfx->fillRect(120, 120, 120, 16, BLACK);
+  draw(120, 120, "aZ:"+String(eventAccl.acceleration.z, 2));
+#endif
+
+  gfx->fillRect(30, 160,  96, 16, BLACK);
+  draw(30, 160, String(headingDegrees));
+#endif //#if CALIBRATE
+  
+  delay(200);
 }
